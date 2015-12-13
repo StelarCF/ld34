@@ -19,10 +19,10 @@ void main() {
     float blur_rad = BLUR_RADIUS * smoothstep(0.8 - 0.5, 0.8, dist) + 0.002;
     vec4 color = vec4(0.0);
     float total = 0.0;
-    for(int dx = -3; dx <= 3; dx++) {
-        for(int dy = -3; dy < 3; dy++) {
-            float dx2 = blur_rad * float(dx) / 3.0;
-            float dy2 = blur_rad * float(dy) / 3.0;
+    for(int dx = -5; dx <= 5; dx++) {
+        for(int dy = -5; dy < 5; dy++) {
+            float dx2 = blur_rad * float(dx) / 5.0;
+            float dy2 = blur_rad * float(dy) / 5.0;
             vec2 coord = v_coord + vec2(dx2, dy2);
             vec4 tex = sample_tex(coord);
             //chromatic abberation

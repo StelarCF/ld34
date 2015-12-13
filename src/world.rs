@@ -14,16 +14,28 @@ use gfx_graphics::GfxGraphics;
 use nalgebra::{Pnt2, Vec2, Orig, FloatPnt, zero};
 use acacia::{Tree, DataQuery, Node, AssociatedData, Position};
 use acacia::partition::Ncube;
-//use acacia::tree::{Tree, DataQuery, Node, AssociatedData, Position};
 
 pub const WORLD_SIZE: f64 = 3000.0;
 pub const GRAV: f64 = 100.0;
-pub const TIME_SCALE: f64 = 10.0;
+pub const TIME_SCALE: f64 = 12.0;
 pub const EJECT_MASS: f64 = 0.05;
 pub const EJECT_VEL: f64 = 30.0;
 pub const COLLISION_EJECT_MASS: f64 = 0.05;
 pub const COLLISION_EJECT_VEL: f64 = 15.0;
 pub const NUM_BODIES: usize = 500;
+//pub const SHADOW_LENGTH: f64 = 2000.0;
+
+gfx_parameters!( ShadowParams {
+    u_pos@ pos: [f32; 2],
+    u_radius@ radius: f32,
+    u_window@ window: [f32; 2],
+    u_length@ length: f32,
+    u_penumbra@ penumbra: TextureParam<R>,
+});
+
+gfx_vertex!( ShadowVertex {
+    a_tex@ tex: [f32; 2],
+});
 
 gfx_parameters!( PostprocParams {
     u_tex@ tex: TextureParam<R>,
@@ -51,7 +63,8 @@ pub struct World {
     shadow_tex: Texture<Resources>,
     o_shadow: Frame<Resources>,
     o_postproc: Frame<Resources>,
-    postproc: gfx::batch::Full<PostprocParams<Resources>>
+    postproc: gfx::batch::Full<PostprocParams<Resources>>,
+    //shadow: gfx::batch::Full<ShadowParams<Resources>>,
 }
 
 impl Position for Body {
@@ -82,12 +95,20 @@ impl Body {
         5.0 * self.mass.sqrt()
     }
 
-    pub fn draw<O>(&self, c: Context, g: &mut GraphicsOutput<O>, draw_state: &DrawState)
-        where O: Output<Resources>
+    pub fn draw<O>(&self, c: Context,
+                   g: &mut GraphicsOutput<O>,
+                   draw_state: &DrawState,
+                   larger: bool) where O: Output<Resources>
     {
         let radius = self.radius() - 1.0;
+        let border_color = if larger {
+            [0.9, 0.3, 0.2, 1.0]
+        }
+        else {
+            [0.5, 0.4, 0.3, 1.0]
+        };
         Ellipse::new([0.8, 0.7, 0.5, 1.0]).border(ellipse::Border {
-                color: [0.5, 0.4, 0.3, 1.0],
+                color: border_color,
                 radius: 1.0
             }).draw([self.x - radius, self.y - radius,
                      radius * 2.0, radius * 2.0],
@@ -101,19 +122,19 @@ impl Body {
                           view_x: f64,
                           view_y: f64,
                           view_width: f64,
-                          _view_height: f64) where O: Output<Resources>
+                          view_height: f64) where O: Output<Resources>
     {
         //culling
-        /*if self.x > view_x + view_width || self.y > view_y + view_height {
+        if self.x > view_x + view_width || self.y > view_y + view_height {
             return;
-        }*/
+        }
         if self.x < view_x || self.y < view_y {
             if ((view_x - self.x) - (view_y - self.y)).abs() > view_width {
                 return;
             }
         }
 
-        let num = self.radius().ceil().min(20.0) as i32;
+        let num = (self.radius() / 3.0).ceil().min(20.0) as i32;
         for angle in -num..num {
             let angle = -f64::consts::PI / 4.0 + angle as f64 / (64.0 * num as f64);
             let sx0 = self.x + self.radius() * angle.cos();
@@ -182,8 +203,10 @@ impl World {
             let slice = mesh.to_slice(gfx::PrimitiveType::TriangleList);
             let mut vertex_src = Vec::new();
             let mut fragment_src = Vec::new();
-            File::open("shaders/vertex.glsl").unwrap().read_to_end(&mut vertex_src).unwrap();
-            File::open("shaders/fragment.glsl").unwrap().read_to_end(&mut fragment_src).unwrap();
+            File::open("shaders/postproc_v.glsl").unwrap()
+                .read_to_end(&mut vertex_src).unwrap();
+            File::open("shaders/postproc_f.glsl").unwrap()
+                .read_to_end(&mut fragment_src).unwrap();
             let program = factory.link_program(&vertex_src[..], &fragment_src[..]).unwrap();
             let state = gfx::DrawState::new();
             let sampler = factory.create_sampler(
@@ -200,13 +223,53 @@ impl World {
             batch
         };
 
+        /*let shadow = {
+            let vertex_data = [
+                ShadowVertex { tex: [1.0, 0.0] },
+                ShadowVertex { tex: [1.0, 1.0] },
+                ShadowVertex { tex: [0.0, 1.0] },
+                ShadowVertex { tex: [0.0, 1.0] },
+                ShadowVertex { tex: [0.0, 0.0] },
+                ShadowVertex { tex: [1.0, 0.0] },
+            ];
+            let mesh = factory.create_mesh(&vertex_data);
+            let slice = mesh.to_slice(gfx::PrimitiveType::TriangleList);
+            let mut vertex_src = Vec::new();
+            let mut fragment_src = Vec::new();
+            File::open("shaders/shadow_v.glsl").unwrap()
+                .read_to_end(&mut vertex_src).unwrap();
+            File::open("shaders/shadow_f.glsl").unwrap()
+                .read_to_end(&mut fragment_src).unwrap();
+            let program = factory.link_program(&vertex_src[..], &fragment_src[..]).unwrap();
+            let state = gfx::DrawState::new()
+                .blend(gfx::BlendPreset::Multiply);
+
+            let penumbra_tex = Texture::from_path(
+                factory, "assets/penumbra.png", Flip::None, &TextureSettings::new()).unwrap();
+
+            let data = ShadowParams {
+                pos: [0.0, 0.0],
+                radius: 0.0,
+                window: [width as f32, height as f32],
+                length: 0.0,
+                penumbra: (penumbra_tex.handle(), None),
+                _r: PhantomData
+            };
+
+            let mut batch = gfx::batch::Full::new(mesh, program, data).unwrap();
+            batch.slice = slice;
+            batch.state = state;
+            batch
+        };*/
+
         World {
             bodies: bodies,
             next_body: NUM_BODIES,
             shadow_tex: shadow_tex,
             o_shadow: o_shadow,
             o_postproc: o_postproc,
-            postproc: postproc
+            postproc: postproc,
+            //shadow: shadow
         }
     }
 
@@ -344,7 +407,7 @@ impl World {
         false
     }
 
-    pub fn draw(&self, window: &PistonWindow, stream: &mut GfxStream, width: u32, height: u32) {
+    pub fn draw(&mut self, window: &PistonWindow, stream: &mut GfxStream, width: u32, height: u32) {
         let c_abs = Context::new_abs(width as f64, height as f64);
         let view_x = -(width as f64 / 2.0 - self.bodies[0].x * self.space_scale());
         let view_y = -(height as f64 / 2.0 - self.bodies[0].y * self.space_scale());
@@ -356,8 +419,24 @@ impl World {
         {
             let renderer = &mut stream.ren;
             let g2d = &mut window.g2d.borrow_mut();
-
             {
+                /*let mut stream = (&mut stream.ren, &self.o_shadow);
+                stream.clear(ClearData {
+                    color: [1.0, 1.0, 1.0, 0.0],
+                    depth: 0.0,
+                    stencil: 0
+                });
+
+                for body in self.bodies.values() {
+                    self.shadow.params.pos = [
+                        ((body.x - self.bodies[0].x) * self.space_scale()) as f32,
+                        ((body.y - self.bodies[0].y) * self.space_scale()) as f32
+                    ];
+                    self.shadow.params.radius = (body.radius() * self.space_scale()) as f32;
+                    self.shadow.params.length = (SHADOW_LENGTH * self.space_scale()) as f32;
+                    stream.draw(&self.shadow).unwrap();
+                }*/
+
                 let g = &mut GfxGraphics::new(renderer, &self.o_shadow, g2d);
                 clear([1.0, 1.0, 1.0, 1.0], g);
                 for body in self.bodies.values() {
@@ -374,7 +453,7 @@ impl World {
                 clear([0.05, 0.05, 0.15, 1.0], g);
 
                 for body in self.bodies.values() {
-                    body.draw(c, g, &draw_state);
+                    body.draw(c, g, &draw_state, body.mass > self.bodies[0].mass);
                 }
 
                 let c = c_abs.scale(1.0, -1.0).trans(0.0, -(height as f64));

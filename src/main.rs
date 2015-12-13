@@ -39,7 +39,7 @@ fn main() {
         let mut mouse_pos = [0.0, 0.0];
 
         let mut glyphs = Glyphs::new(
-            "./assets/DejaVuSans.ttf",
+            "./assets/OptimusPrinceps.ttf",
             window.factory.borrow().clone()).unwrap();
 
         let mut state = GameState::Playing;
@@ -64,8 +64,8 @@ fn main() {
             e.draw_2d(|c, g| {
                 match state {
                     GameState::Dead => {
-                        clear([0.0, 0.0, 0.0, 1.0], g);
-                        Text::new_color([0.5, 0.5, 1.0, 1.0], 100)
+                        clear([0.05, 0.05, 0.15, 1.0], g);
+                        Text::new_color([0.5, 0.2, 0.2, 1.0], 100)
                             .draw("You were absorbed...", &mut glyphs,
                                   &c.draw_state, c.trans(75.0, 100.0).transform, g);
                         Text::new_color([0.4, 0.4, 0.4, 1.0], 50)

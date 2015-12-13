@@ -1,0 +1,15 @@
+[package]
+name = "ld34"
+version = "0.1.0"
+authors = ["Benjamin Lee <benjamin.fik.lee@gmail.com>"]
+
+[dependencies]
+rand = "*"
+vec_map = "*"
+piston_window = "*"
+gfx_device_gl = "*"
+gfx = "*"
+piston2d-gfx_graphics = "*"
+piston-music = "*"
+acacia = "*"
+nalgebra = "0.2.23"

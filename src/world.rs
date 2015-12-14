@@ -54,11 +54,11 @@ pub struct Body {
     y: f64,
     dx: f64,
     dy: f64,
-    mass: f64,
+    pub mass: f64,
 }
 
 pub struct World {
-    bodies: VecMap<Body>,
+    pub bodies: VecMap<Body>,
     next_body: usize,
     shadow_tex: Texture<Resources>,
     o_shadow: Frame<Resources>,

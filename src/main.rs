@@ -71,6 +71,9 @@ fn main() {
                         Text::new_color([0.5, 0.2, 0.2, 1.0], 100)
                             .draw("You were absorbed...", &mut glyphs,
                                   &c.draw_state, c.trans(75.0, 100.0).transform, g);
+                        Text::new_color([0.4, 0.4, 0.4, 1.0], 60)
+                            .draw(&format!("Mass: {:.01}", world.bodies[0].mass)[..],
+                                  &mut glyphs, &c.draw_state, c.trans(100.0, 300.0).transform, g);
                         Text::new_color([0.4, 0.4, 0.4, 1.0], 50)
                             .draw("Press any key to restart", &mut glyphs,
                                   &c.draw_state, c.trans(100.0, 500.0).transform, g);

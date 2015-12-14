@@ -21,7 +21,8 @@ enum GameState {
 }
 
 fn main() {
-    let (width, height) = glutin::get_available_monitors().next().unwrap().get_dimensions();
+    let (width, height) = glutin::get_available_monitors().next().map(|window|
+        window.get_dimensions()).unwrap_or((1024, 768));
 
     //TODO configurable resolution
     let window: PistonWindow = WindowSettings::new("Protoplanet", (width, height))

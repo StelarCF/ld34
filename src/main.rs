@@ -8,6 +8,7 @@ extern crate gfx_graphics;
 extern crate acacia;
 extern crate nalgebra;
 extern crate music;
+extern crate glutin;
 
 use piston_window::*;
 
@@ -20,12 +21,10 @@ enum GameState {
 }
 
 fn main() {
-    let width = 1280;
-    let height = 1024;
+    let (width, height) = glutin::get_primary_monitor().get_dimensions();
 
     //TODO configurable resolution
     let window: PistonWindow = WindowSettings::new("Protoplanet", (width, height))
-        .fullscreen(true)
         .exit_on_esc(true)
         .build()
         .unwrap();

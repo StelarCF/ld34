@@ -9,12 +9,13 @@ in vec2 a_tex;
 out vec2 v_coord;
 
 void main() {
-    v_coord = a_tex;
-    float spread = 3.0 * a_tex.y + 1.0;
-    float rad = -spread * (a_tex.x * 2.0 - 1.0);
+    float spread = 0.08 * u_length * a_tex.y;
+    float rad = -(a_tex.x * 2.0 - 1.0);
+    rad += spread * sign(rad);
     vec2 coord = rad * vec2(-1.0, 1.0) * vec2(0.5 * sqrt(2.0));
     coord *= 2.0 * (u_radius + 1.0);
-    coord += 2.0 * u_pos * vec2(1.0, -1.0);
     coord += a_tex.y * u_length;
-    gl_Position = vec4((coord.xy) / u_window, 0.0, 1.0);
+    v_coord = coord;
+    coord += 2.0 * u_pos * vec2(1.0, -1.0);
+    gl_Position = vec4(coord / u_window, 0.0, 1.0);
 }

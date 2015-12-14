@@ -36,6 +36,7 @@ fn main() {
 
         let mut world = World::new(&window, width, height);
 
+        let mut paused = false;
         let mut mouse_pos = [0.0, 0.0];
 
         let mut glyphs = Glyphs::new(
@@ -47,8 +48,10 @@ fn main() {
         for e in window {
             e.update(|args| {
                 match state {
-                    GameState::Playing => if world.tick(args.dt) {
-                        state = GameState::Dead;
+                    GameState::Playing => if !paused {
+                        if world.tick(args.dt) {
+                            state = GameState::Dead;
+                        }
                     },
                     GameState::Dead => ()
                 }
@@ -72,7 +75,11 @@ fn main() {
                             .draw("Press any key to restart", &mut glyphs,
                                   &c.draw_state, c.trans(100.0, 500.0).transform, g);
                     },
-                    GameState::Playing => ()
+                    GameState::Playing => if paused {
+                        Text::new_color([0.5, 0.2, 0.2, 0.7], 50)
+                            .draw("Paused", &mut glyphs,
+                                &c.draw_state, c.trans(0.0, height as f64).transform, g);
+                    }
                 }
             });
 
@@ -82,14 +89,17 @@ fn main() {
 
             e.press(|k| {
                 match state {
-                    GameState::Playing => if k == Button::Mouse(MouseButton::Left) {
-                        world.eject_mouse(mouse_pos[0], mouse_pos[1], width as f64, height as f64);
+                    GameState::Playing => match k {
+                        Button::Mouse(MouseButton::Left) => world.eject_mouse(
+                            mouse_pos[0], mouse_pos[1], width as f64, height as f64),
+                        Button::Keyboard(Key::Space) => paused = !paused,
+                        _ => ()
                     },
                     GameState::Dead => {
                         //restart game
                         state = GameState::Playing;
                         world = World::new(&e, width, height);
-                    }
+                    },
                 }
             });
         }

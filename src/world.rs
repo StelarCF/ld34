@@ -6,7 +6,7 @@ use vec_map::VecMap;
 use rand::{thread_rng, Rng};
 use piston_window::*;
 use gfx_device_gl::Resources;
-use gfx::{self, Plane, Frame, Gamma};
+use gfx::{self, Plane, Frame, Gamma, ClearData};
 use gfx::traits::{ToSlice, FactoryExt, Output, Stream, Factory};
 use gfx::device::command::CommandBuffer;
 use gfx::shade::TextureParam;
@@ -15,22 +15,22 @@ use nalgebra::{Pnt2, Vec2, Orig, FloatPnt, zero};
 use acacia::{Tree, DataQuery, Node, AssociatedData, Position};
 use acacia::partition::Ncube;
 
-pub const WORLD_SIZE: f64 = 3000.0;
+pub const WORLD_SIZE: f64 = 2500.0;
 pub const GRAV: f64 = 100.0;
 pub const TIME_SCALE: f64 = 12.0;
 pub const EJECT_MASS: f64 = 0.05;
 pub const EJECT_VEL: f64 = 30.0;
 pub const COLLISION_EJECT_MASS: f64 = 0.05;
 pub const COLLISION_EJECT_VEL: f64 = 15.0;
-pub const NUM_BODIES: usize = 500;
-//pub const SHADOW_LENGTH: f64 = 2000.0;
+pub const NUM_BODIES: usize = 450;
+pub const SHADOW_LENGTH: f64 = 800.0;
 
 gfx_parameters!( ShadowParams {
     u_pos@ pos: [f32; 2],
     u_radius@ radius: f32,
+    u_radius_abs@ radius_abs: f32,
     u_window@ window: [f32; 2],
     u_length@ length: f32,
-    u_penumbra@ penumbra: TextureParam<R>,
 });
 
 gfx_vertex!( ShadowVertex {
@@ -64,7 +64,7 @@ pub struct World {
     o_shadow: Frame<Resources>,
     o_postproc: Frame<Resources>,
     postproc: gfx::batch::Full<PostprocParams<Resources>>,
-    //shadow: gfx::batch::Full<ShadowParams<Resources>>,
+    shadow: gfx::batch::Full<ShadowParams<Resources>>,
 }
 
 impl Position for Body {
@@ -100,55 +100,19 @@ impl Body {
                    draw_state: &DrawState,
                    larger: bool) where O: Output<Resources>
     {
-        let radius = self.radius() - 1.0;
-        let border_color = if larger {
-            [0.9, 0.3, 0.2, 1.0]
+        let (border_color, border_radius) = if larger {
+            ([0.5, 0.9, 0.3, 1.0], 2.0)
         }
         else {
-            [0.5, 0.4, 0.3, 1.0]
+            ([0.5, 0.4, 0.3, 1.0], 1.0)
         };
+        let radius = self.radius() - border_radius;
         Ellipse::new([0.8, 0.7, 0.5, 1.0]).border(ellipse::Border {
                 color: border_color,
-                radius: 1.0
+                radius: border_radius,
             }).draw([self.x - radius, self.y - radius,
                      radius * 2.0, radius * 2.0],
                     &draw_state, c.transform, g);
-    }
-
-    pub fn draw_shadow<O>(&self,
-                          c: Context,
-                          g: &mut GraphicsOutput<O>,
-                          draw_state: &DrawState,
-                          view_x: f64,
-                          view_y: f64,
-                          view_width: f64,
-                          view_height: f64) where O: Output<Resources>
-    {
-        //culling
-        if self.x > view_x + view_width || self.y > view_y + view_height {
-            return;
-        }
-        if self.x < view_x || self.y < view_y {
-            if ((view_x - self.x) - (view_y - self.y)).abs() > view_width {
-                return;
-            }
-        }
-
-        let num = (self.radius() / 3.0).ceil().min(20.0) as i32;
-        for angle in -num..num {
-            let angle = -f64::consts::PI / 4.0 + angle as f64 / (64.0 * num as f64);
-            let sx0 = self.x + self.radius() * angle.cos();
-            let sy0 = self.y + self.radius() * angle.sin();
-            let sx1 = self.x - self.radius() * angle.cos();
-            let sy1 = self.y - self.radius() * angle.sin();
-            let len = WORLD_SIZE * 10.0;
-
-            Polygon::new([0.98, 0.98, 0.98, 1.0]).draw(
-                &[[sx0, sy0], [sx1, sy1],
-                  [sx1 + len * angle.cos(), sy1 - len * angle.sin()],
-                  [sx0 + len * angle.cos(), sy0 - len * angle.sin()]],
-                &draw_state.blend(draw_state::BlendPreset::Multiply), c.transform, g);
-        }
     }
 }
 
@@ -223,7 +187,7 @@ impl World {
             batch
         };
 
-        /*let shadow = {
+        let shadow = {
             let vertex_data = [
                 ShadowVertex { tex: [1.0, 0.0] },
                 ShadowVertex { tex: [1.0, 1.0] },
@@ -244,15 +208,12 @@ impl World {
             let state = gfx::DrawState::new()
                 .blend(gfx::BlendPreset::Multiply);
 
-            let penumbra_tex = Texture::from_path(
-                factory, "assets/penumbra.png", Flip::None, &TextureSettings::new()).unwrap();
-
             let data = ShadowParams {
                 pos: [0.0, 0.0],
                 radius: 0.0,
+                radius_abs: 0.0,
                 window: [width as f32, height as f32],
                 length: 0.0,
-                penumbra: (penumbra_tex.handle(), None),
                 _r: PhantomData
             };
 
@@ -260,7 +221,7 @@ impl World {
             batch.slice = slice;
             batch.state = state;
             batch
-        };*/
+        };
 
         World {
             bodies: bodies,
@@ -269,7 +230,7 @@ impl World {
             o_shadow: o_shadow,
             o_postproc: o_postproc,
             postproc: postproc,
-            //shadow: shadow
+            shadow: shadow
         }
     }
 
@@ -417,10 +378,9 @@ impl World {
         let draw_state = c.draw_state;//.multi_sample();
 
         {
-            let renderer = &mut stream.ren;
             let g2d = &mut window.g2d.borrow_mut();
             {
-                /*let mut stream = (&mut stream.ren, &self.o_shadow);
+                let mut stream = (&mut stream.ren, &self.o_shadow);
                 stream.clear(ClearData {
                     color: [1.0, 1.0, 1.0, 0.0],
                     depth: 0.0,
@@ -433,11 +393,13 @@ impl World {
                         ((body.y - self.bodies[0].y) * self.space_scale()) as f32
                     ];
                     self.shadow.params.radius = (body.radius() * self.space_scale()) as f32;
-                    self.shadow.params.length = (SHADOW_LENGTH * self.space_scale()) as f32;
+                    self.shadow.params.radius_abs = body.radius() as f32;
+                    self.shadow.params.length =
+                        (body.radius() * SHADOW_LENGTH * self.space_scale()) as f32;
                     stream.draw(&self.shadow).unwrap();
-                }*/
+                }
 
-                let g = &mut GfxGraphics::new(renderer, &self.o_shadow, g2d);
+                /*let g = &mut GfxGraphics::new(renderer, &self.o_shadow, g2d);
                 clear([1.0, 1.0, 1.0, 1.0], g);
                 for body in self.bodies.values() {
                     body.draw_shadow(c, g, &draw_state,
@@ -445,10 +407,10 @@ impl World {
                                      view_y / self.space_scale(),
                                      width as f64 / self.space_scale(),
                                      height as f64 / self.space_scale());
-                }
+                }*/
             }
             {
-                let g = &mut GfxGraphics::new(renderer, &self.o_postproc, g2d);
+                let g = &mut GfxGraphics::new(&mut stream.ren, &self.o_postproc, g2d);
 
                 clear([0.05, 0.05, 0.15, 1.0], g);
 

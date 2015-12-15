@@ -24,6 +24,7 @@ pub const COLLISION_EJECT_MASS: f64 = 0.05;
 pub const COLLISION_EJECT_VEL: f64 = 15.0;
 pub const NUM_BODIES: usize = 450;
 pub const SHADOW_LENGTH: f64 = 800.0;
+pub const WALL_FORCE: f64 = 3.0;
 
 gfx_parameters!( ShadowParams {
     u_pos@ pos: [f32; 2],
@@ -300,7 +301,7 @@ impl World {
         let mut collisions = Vec::new();
         for (i, body) in self.bodies.iter_mut() {
             let ref_pos = Pnt2::new(body.x, body.y);
-            let accel: Vec2<f64> = tree.query_data(|node| {
+            let mut accel: Vec2<f64> = tree.query_data(|node| {
                 let &(ref pos, _, _) = node.data();
                 let d = FloatPnt::dist(&ref_pos, pos);
                 let d2 = FloatPnt::dist(&node.partition().center(), pos);
@@ -315,6 +316,14 @@ impl World {
                 else {
                     zero()
                 }).fold(zero(), |a, b| a + b);
+            //repel from walls
+            {
+                let len = (body.x * body.x + body.y * body.y).sqrt();
+                if len > WORLD_SIZE * 2.0f64.sqrt() {
+                    accel.x -= body.x * WALL_FORCE / len;
+                    accel.y -= body.y * WALL_FORCE / len;
+                }
+            }
             body.dx += dt * accel.x;
             body.dy += dt * accel.y;
             body.x += dt * body.dx;
